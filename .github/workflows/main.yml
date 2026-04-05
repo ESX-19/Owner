@@ -4,82 +4,53 @@ on:
   workflow_dispatch:
 
 jobs:
-  secure-rdp:
+  rdp:
     runs-on: windows-latest
     timeout-minutes: 3600
 
     steps:
-
-      - name: Enable RDP + Optimize System
+      - name: Enable RDP
         run: |
-          # Enable RDP
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
             -Name "fDenyTSConnections" -Value 0 -Force
 
-          # KEEP NLA ON (more secure + faster)
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
-            -Name "UserAuthentication" -Value 1 -Force
-
-          # Firewall
-          netsh advfirewall firewall delete rule name="RDP"
           netsh advfirewall firewall add rule name="RDP" dir=in action=allow protocol=TCP localport=3389
-
-          # Optimize performance (no animations)
-          reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects" /v VisualFXSetting /t REG_DWORD /d 2 /f
-
-          # Disable unnecessary services
-          Get-Service | Where-Object {
-            $_.Status -eq "Running" -and $_.Name -notmatch "TermService"
-          } | ForEach-Object {
-            Stop-Service $_.Name -Force -ErrorAction SilentlyContinue
-          }
 
           Restart-Service -Name TermService -Force
 
-
-      - name: Create Fast RDP User
+      - name: Create User
         run: |
-          $password = "RDP@123456"   # ثابت عشان السرعة
-
-          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
-
-          net user RDP $password /add
+          net user RDP 123456Aa! /add
           net localgroup administrators RDP /add
           net localgroup "Remote Desktop Users" RDP /add
 
-          echo "RDP_USER=RDP" >> $env:GITHUB_ENV
-          echo "RDP_PASS=$password" >> $env:GITHUB_ENV
+          echo "USER=RDP" >> $env:GITHUB_ENV
+          echo "PASS=123456Aa!" >> $env:GITHUB_ENV
 
-
-      - name: Install Tailscale (Fast)
+      - name: Install Tailscale
         run: |
-          winget install --id Tailscale.Tailscale -e --silent
-
+          Invoke-WebRequest https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi -OutFile ts.msi
+          Start-Process msiexec.exe -ArgumentList "/i ts.msi /quiet /norestart" -Wait
 
       - name: Connect Tailscale
         run: |
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up `
-            --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} `
-            --hostname=rdp-fast
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }}
 
-          Start-Sleep -Seconds 10
+          Start-Sleep 10
 
           $ip = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
-          echo "TS_IP=$ip" >> $env:GITHUB_ENV
+          echo "IP=$ip" >> $env:GITHUB_ENV
 
-
-      - name: Show Access Info
+      - name: Show Info
         run: |
-          Write-Host "===== RDP INFO ====="
-          Write-Host "IP: $env:TS_IP"
-          Write-Host "User: $env:RDP_USER"
-          Write-Host "Pass: $env:RDP_PASS"
-          Write-Host "===================="
-
+          Write-Host "========== RDP =========="
+          Write-Host "IP: $env:IP"
+          Write-Host "User: $env:USER"
+          Write-Host "Pass: $env:PASS"
+          Write-Host "========================="
 
       - name: Keep Alive
         run: |
           while ($true) {
-            Write-Host "RDP Running..."
-            Start-Sleep -Seconds 300
+            Start-Sleep 300
           }
